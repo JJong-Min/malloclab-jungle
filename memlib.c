@@ -25,11 +25,12 @@ static char *mem_max_addr;   /* largest legal heap address */
 void mem_init(void)
 {
     /* allocate the storage we will use to model the available VM */
+    // heap의 최대 크기(MAX_HEAP)을 할당했을 때, 그 시작주소가 NULL이면 문제가 있는 것이므로 에러처리
     if ((mem_start_brk = (char *)malloc(MAX_HEAP)) == NULL) {
 	fprintf(stderr, "mem_init_vm: malloc error\n");
 	exit(1);
     }
-
+    // heap의 마지막을 가리키는 mem_max_addr
     mem_max_addr = mem_start_brk + MAX_HEAP;  /* max legal heap address */
     mem_brk = mem_start_brk;                  /* heap is empty initially */
 }
@@ -57,6 +58,7 @@ void mem_reset_brk()
  */
 void *mem_sbrk(int incr) 
 {
+    // return을 위해 이전 mem_brk를 저장해둠.
     char *old_brk = mem_brk;
 
     if ( (incr < 0) || ((mem_brk + incr) > mem_max_addr)) {

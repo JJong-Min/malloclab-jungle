@@ -212,6 +212,7 @@ static void* next_fit(size_t asize)
             return bp;
         }        
     }
+    // 끝까지 갔는데 할당가능한 free block이 없으면 다시 처음부터 last_bp전까지 탐색
     bp = heap_listp;
     while (bp < last_bp)
     {

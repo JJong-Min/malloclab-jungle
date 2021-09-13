@@ -24,6 +24,8 @@
 #define NEXT_BLKP(bp) ((char *)(bp) + GET_SIZE(((char *)(bp) - WSIZE)))
 // block pointer p의 이전 블록의 위치를 가리키는 pointer 반환
 #define PREV_BLKP(bp) ((char *)(bp) - GET_SIZE(((char *)(bp) - DSIZE)))
+#define FIRST_FITX
+#define NEXT_FIT
 #include <stdio.h>
 #include <stdlib.h>
 #include <assert.h>
@@ -34,8 +36,10 @@
 static void *extend_heap(size_t words);
 static void *coalesce(void *bp);
 static void place(void *bp, size_t asize);
-static void *find_fit(size_t asize);
+// static void *find_fit(size_t asize);
+static void* next_fit(size_t asize);
 static void *heap_listp = NULL;
+static void *last_bp;         // next_fit을 위한 변수 선언
 // static char *mem_start_brk;  /* points to first byte of heap */
 // static char *mem_brk;        /* points to last byte of heap */
 // static char *mem_max_addr;   /* largest legal heap address */
@@ -74,10 +78,13 @@ int mm_init(void)
     PUT(heap_listp + (2*WSIZE), PACK(DSIZE, 1)); // prologue footer
     PUT(heap_listp + (3*WSIZE), PACK(0, 1)); // epliogue header
     heap_listp += (2*WSIZE);
-    if (extend_heap(CHUNKSIZE/WSIZE) == NULL)
+    if (extend_heap(CHUNKSIZE/WSIZE) == NULL) {
         return -1;
+    }
+    last_bp = heap_listp;
     return 0;
 }
+
 static void *extend_heap(size_t words)
 {
     char *bp;
@@ -93,6 +100,7 @@ static void *extend_heap(size_t words)
     PUT(HDRP(NEXT_BLKP(bp)), PACK(0, 1));
     return coalesce(bp);
 }
+
 /* 
  * mm_malloc - Allocate a block by incrementing the brk pointer.
  *     Always allocate a block whose size is a multiple of the alignment.
@@ -111,6 +119,7 @@ static void place(void *bp, size_t asize) {
         PUT(FTRP(bp), PACK(csize, 1));
     }
 }
+
 void *mm_malloc(size_t size)
 {
     size_t asize;
@@ -122,8 +131,9 @@ void *mm_malloc(size_t size)
         asize = 2*DSIZE;
     else
         asize = DSIZE * ((size + (DSIZE) + (DSIZE - 1)) / DSIZE);
-    if ((bp = find_fit(asize)) != NULL) {
+    if ((bp = next_fit(asize)) != NULL) {
         place(bp, asize);
+        last_bp = bp;
         return bp;
     }
     extendsize = MAX(asize, CHUNKSIZE);
@@ -132,9 +142,8 @@ void *mm_malloc(size_t size)
     place(bp, asize);
     return bp;
 }
-/*
- * mm_free - Freeing a block does nothing.
- */
+
+// 해당 블록을 free
 void mm_free(void *bp) {
     size_t size = GET_SIZE(HDRP(bp));
     PUT(HDRP(bp), PACK(size, 0)); 
@@ -142,6 +151,7 @@ void mm_free(void *bp) {
     coalesce(bp); 
 }
 
+// 양쪽의 블록을 확인하여 free된 것은 연결
 static void *coalesce(void *bp)
 {
     size_t prev_alloc = GET_ALLOC(FTRP(PREV_BLKP(bp)));
@@ -149,6 +159,7 @@ static void *coalesce(void *bp)
     size_t size = GET_SIZE(HDRP(bp));
     // 앞 뒤 블록 둘 다 allocated일 경우
     if (prev_alloc && next_alloc) {
+        last_bp = bp;
         return bp;
     }
     // 뒤 블록만 free일 경우
@@ -171,9 +182,12 @@ static void *coalesce(void *bp)
         PUT(FTRP(NEXT_BLKP(bp)), PACK(size, 0));
         bp = PREV_BLKP(bp);
     }
+    last_bp = bp;
     return bp;
 }
+
 // first-fit
+#if defined(FIRST_FIT)
 static void *find_fit(size_t asize)
 {
     void *bp;
@@ -184,9 +198,36 @@ static void *find_fit(size_t asize)
     }
     return NULL;
 }
-/*
- * mm_realloc - Implemented simply in terms of mm_malloc and mm_free
- */
+
+#else
+static void* next_fit(size_t asize)
+{
+    char* bp = last_bp;
+
+    for (bp = NEXT_BLKP(bp); GET_SIZE(HDRP(bp))!=0; bp = NEXT_BLKP(bp))
+    {
+        if (GET_ALLOC(HDRP(bp)) == 0 && GET_SIZE(HDRP(bp)) >= asize)
+        {
+            last_bp = bp;
+            return bp;
+        }        
+    }
+    bp = heap_listp;
+    while (bp < last_bp)
+    {
+        bp = NEXT_BLKP(bp);
+
+        if (GET_ALLOC(HDRP(bp)) == 0 && GET_SIZE(HDRP(bp)) >= asize)
+        {
+            last_bp = bp;
+            return bp;
+        }
+    }
+    return NULL;
+}
+
+#endif
+
 void *mm_realloc(void *ptr, size_t size)
 {
     void *oldptr = ptr;
@@ -196,7 +237,6 @@ void *mm_realloc(void *ptr, size_t size)
     if (newptr == NULL)
       return NULL;
     copySize = GET_SIZE(HDRP(oldptr));
-    /* copySize = *(size_t *)((char *)oldptr - SIZE_T_SIZE); */
     if (size < copySize)
       copySize = size;
     memcpy(newptr, oldptr, copySize);

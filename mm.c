@@ -6,12 +6,17 @@
 #include "mm.h"
 
 team_t team = {
-	"Malloc lab",
-	"Seung    ",
-	"20210120",
-	"Huh ",
-	"20210120"
-	};
+    /* Team name */
+    "ateam",
+    /* First member's full name */
+    "Harry Bovik",
+    /* First member's email address */
+    "bovik@cs.cmu.edu",
+    /* Second member's full name (leave blank if none) */
+    "",
+    /* Second member's email address (leave blank if none) */
+    ""
+};
 
 #define WSIZE 4                     // word size 4로 지정
 #define DSIZE (2 * WSIZE)           // double word size 8로 지정
@@ -47,7 +52,6 @@ static void printblock(void *bp);
 
 int mm_init(void)
 {
-	/* Create the initial empty heap. */
 	if ((heap_listp = mem_sbrk(6 * WSIZE)) == NULL) 
 		return -1;
 
@@ -58,7 +62,7 @@ int mm_init(void)
 	PUT(heap_listp + (4 * WSIZE), PACK(2*DSIZE, 1)); /* Prologue footer */
 	PUT(heap_listp + (5 * WSIZE), PACK(0, 1));	   /* Epilogue header */
 	free_list_start = heap_listp + 2 * WSIZE;
-	/* Extend the empty heap with a free block of minimum possible block size */
+	
 	if (extend_heap(4) == NULL)
 	{
 		return -1;

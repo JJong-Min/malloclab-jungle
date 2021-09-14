@@ -17,49 +17,30 @@ team_t team = {
 #define DSIZE (2 * WSIZE)           // double word size 8로 지정
 #define CHUNKSIZE (1 << 12)         // heap size를 늘릴 때 사용할 chunksize 지정
 #define MAX(x, y) ((x) > (y) ? (x) : (y))
-
-/* Pack a size and allocated bit into a word */
 #define PACK(size, alloc) ((size) | (alloc))
-
-/* Read and write a word at address p. */
 #define GET(p) (*(unsigned int *)(p))
 #define PUT(p, val) (*(unsigned int *)(p) = (val))
-
-/* Read the size and allocated fields from address p */
 #define GET_SIZE(p)  (GET(p) & ~0x7)
 #define GET_ALLOC(p) (GET(p) & 0x1)
-
-/* Given block ptr bp, compute address of its header and footer */
 #define HDRP(bp) ((void *)(bp) - WSIZE)
 #define FTRP(bp) ((void *)(bp) + GET_SIZE(HDRP(bp)) - DSIZE)
-
-/* Given block ptr bp, compute address of next and previous blocks */
 #define NEXT_BLK(bp) ((void *)(bp) + GET_SIZE(HDRP(bp)))
 #define PREV_BLK(bp) ((void *)(bp) - GET_SIZE((void *)(bp)-DSIZE))
 
-/* Given ptr in free list, get next and previous ptr in the list */
 #define GET_NEXT_PTR(bp) (*(char **)(bp + WSIZE))
 #define GET_PREV_PTR(bp) (*(char **)(bp))
-
-/* Puts pointers in the next and previous elements of free list */
 #define SET_NEXT_PTR(bp, qp) (GET_NEXT_PTR(bp) = qp)
 #define SET_PREV_PTR(bp, qp) (GET_PREV_PTR(bp) = qp)
 
-/* 글로벌 변수 */
+
 static char *heap_listp = 0;
 static char *free_list_start = 0;
-
-/* Function prototypes */
 static void *coalesce(void *bp);
 static void *extend_heap(size_t words);
 static void *find_fit(size_t asize);
 static void place(void *bp, size_t asize);
-
-/* Function prototypes for maintaining free list*/
 static void insert_in_free_list(void *bp);
 static void remove_from_free_list(void *bp);
-
-/* heap consistency checker routines: 이건 직접 로직을 구현하진 않고 참고 코드 그대로. */
 static void checkblock(void *bp);
 static void checkheap(bool verbose);
 static void printblock(void *bp);
@@ -67,13 +48,15 @@ static void printblock(void *bp);
 int mm_init(void)
 {
 	/* Create the initial empty heap. */
-	if ((heap_listp = mem_sbrk(8 * WSIZE)) == NULL) // 8 * WSIZE에 큰 이유는 없음.
+	if ((heap_listp = mem_sbrk(6 * WSIZE)) == NULL) 
 		return -1;
 
-	PUT(heap_listp, 0);							   /* padding 만듬 */
-	PUT(heap_listp + (1 * WSIZE), PACK(DSIZE, 1)); /* Prologue header */
-	PUT(heap_listp + (2 * WSIZE), PACK(DSIZE, 1)); /* Prologue footer */
-	PUT(heap_listp + (3 * WSIZE), PACK(0, 1));	   /* Epilogue header */
+	PUT(heap_listp, 0);							   /* padding */
+	PUT(heap_listp + (1 * WSIZE), PACK(2*DSIZE, 1)); /* Prologue header */
+	PUT(heap_listp + (2 * WSIZE), 0);
+	PUT(heap_listp + (3 * WSIZE), 0);
+	PUT(heap_listp + (4 * WSIZE), PACK(2*DSIZE, 1)); /* Prologue footer */
+	PUT(heap_listp + (5 * WSIZE), PACK(0, 1));	   /* Epilogue header */
 	free_list_start = heap_listp + 2 * WSIZE;
 	/* Extend the empty heap with a free block of minimum possible block size */
 	if (extend_heap(4) == NULL)
@@ -87,37 +70,30 @@ static void *extend_heap(size_t words)
 {
 	char *bp;
 	size_t size;
-
-	/* Allocate an even number of words to maintain alignment */
 	size = (words % 2) ? (words + 1) * WSIZE : words * WSIZE;
 	// minimum block을 16사이즈로 정함
 	if (size < 16)
 	{
 		size = 16;
 	}
-	/* call for more memory space */
 	if ((int)(bp = mem_sbrk(size)) == -1)
 	{
 		return NULL;
 	}
-	/* Initialize free block header/footer and the epilogue header */
+
 	PUT(HDRP(bp), PACK(size, 0));		 /* free block header */
 	PUT(FTRP(bp), PACK(size, 0));		 /* free block footer */
 	PUT(HDRP(NEXT_BLK(bp)), PACK(0, 1)); /* new epilogue header */
-	/* coalesce bp with next and previous blocks */
 	return coalesce(bp);
 }
 
 static void *coalesce(void *bp) 
 {
-
-	//if previous block is allocated or its size is zero then PREV_ALLOC will be set.
 	size_t NEXT_ALLOC = GET_ALLOC(HDRP(NEXT_BLK(bp)));
-	size_t PREV_ALLOC = GET_ALLOC(FTRP(PREV_BLK(bp))) || PREV_BLK(bp) == bp;  
+	size_t PREV_ALLOC = GET_ALLOC(FTRP(PREV_BLK(bp)));  
 	//PREV_BLK(bp) == bp: epilogue block을 만났을 떄. Extend했을 때 epilogue를 만나는 유일한 경우
 	size_t size = GET_SIZE(HDRP(bp));
 
-	/* Next block is only free */
 	if (PREV_ALLOC && !NEXT_ALLOC)
 	{
 		size += GET_SIZE(HDRP(NEXT_BLK(bp)));
@@ -125,7 +101,7 @@ static void *coalesce(void *bp)
 		PUT(HDRP(bp), PACK(size, 0));
 		PUT(FTRP(bp), PACK(size, 0));
 	}
-	/* Prev block is only free */
+
 	else if (!PREV_ALLOC && NEXT_ALLOC)
 	{
 		size += GET_SIZE(HDRP(PREV_BLK(bp)));
@@ -134,7 +110,7 @@ static void *coalesce(void *bp)
 		PUT(HDRP(bp), PACK(size, 0));
 		PUT(FTRP(bp), PACK(size, 0));
 	}
-	/* Both blocks are free */
+
 	else if (!PREV_ALLOC && !NEXT_ALLOC)
 	{
 		size += GET_SIZE(HDRP(PREV_BLK(bp))) + GET_SIZE(HDRP(NEXT_BLK(bp)));
@@ -178,11 +154,6 @@ void *mm_malloc(size_t size)
 	return (bp);
 }
 
-/* 
- * [김용욱]: 진짜 생각지도 못한 방법으로 최적화를 이뤄내셨군요.. 와.. 대단하십니다.. 
- * 함수가 초기화 되면 변수가 다시 0으로 돌아간다고 생각했는데, 정적 변수를 사용하셔서
- * 변수가 초기화 되지 않는군요! 정적 변수를 어떻게 사용하는지 배웠습니다! 감사합니다!
- */
 static void *find_fit(size_t asize)
 {
 	void *bp;
@@ -244,14 +215,6 @@ static void insert_in_free_list(void *bp)
 	free_list_start = bp;
 }
 
-/* 
- * [김용욱]: 중복되는 코드를 허락하지 않는 모습이 너무 좋습니다! 크으 
- * SET_NEXT_PTR, SET_PREV_PTR 매크로 정의 해두신게 
- * GET_NEXT_PTR, GET_PREV_PTR만 사용해서 적는 것보다 가독성이 훨씬 올라가네요!
- * 좋은 부분을 배운 것 같습니다!
- */
-
-/*Removes the free block pointer int the free_list*/
 static void remove_from_free_list(void *bp)
 {
 	//내 앞에 누구 있으면
@@ -273,12 +236,6 @@ void mm_free(void *bp)
 	PUT(FTRP(bp), PACK(size, 0));
 	coalesce(bp);
 }
-
-/* 
- * [김용욱]: realloc 함수를 직접 구현하셨네요! 대단하십니다!
- * 다만 if문이 깊게 들어가서 가독성 측면에서 조금 아쉬운 것 같습니다. 
- * 300번째 줄부터는 if return, if return, return 구조로 조금 더 가독성을 높히실 수 있을 것 같습니다!
- */
 
 void *mm_realloc(void *bp, size_t size)
 {
@@ -327,9 +284,6 @@ void *mm_realloc(void *bp, size_t size)
 		return NULL;
 }
 
-
-
-// heap consistency check하기
 static void checkblock(void *bp)
 {
 

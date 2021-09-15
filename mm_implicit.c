@@ -45,11 +45,11 @@ static void *last_bp;         // next_fit을 위한 변수 선언
 
 team_t team = {
     /* Team name */
-    "ateam",
+    "jungle_2nd",
     /* First member's full name */
-    "Harry Bovik",
+    "Ratel",
     /* First member's email address */
-    "bovik@cs.cmu.edu",
+    "ksaul77@gmail.com",
     /* Second member's full name (leave blank if none) */
     "",
     /* Second member's email address (leave blank if none) */

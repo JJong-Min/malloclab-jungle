@@ -59,10 +59,6 @@ int mm_init(void)
 	PUT(heap_listp + (5 * WSIZE), PACK(0, 1));	 
 	free_list_start = heap_listp + 2 * WSIZE;
 
-	if (extend_heap(4) == NULL)
-	{
-		return -1;
-	}
 	return 0;
 }
 
@@ -72,9 +68,9 @@ static void *extend_heap(size_t words)
 	size_t size;
 
 	size = (words % 2) ? (words + 1) * WSIZE : words * WSIZE;
-	if (size < 16)
+	if (size < 4 * WSIZE)
 	{
-		size = 16;
+		size = 4 * WSIZE;
 	}
 
 	if ((int)(bp = mem_sbrk(size)) == -1)
@@ -85,7 +81,12 @@ static void *extend_heap(size_t words)
 	PUT(HDRP(bp), PACK(size, 0));		 
 	PUT(FTRP(bp), PACK(size, 0));		
 	PUT(HDRP(NEXT_BLK(bp)), PACK(0, 1)); 
-	return coalesce(bp);
+	/*commet by ggam-nyang*/
+	/*insert_in_free_list가 호출돼야 할 것 같은데, coalesce를 호출한 이유가 뭘까요..?!
+	prev block만 free -> 할당으로 변경된 상황이라 바로 insert를 해도 될 것 같아요..!*/
+	// return coalesce(bp);
+	insert_in_free_list(bp);
+	return bp;
 }
 
 static void *coalesce(void *bp)
@@ -93,20 +94,23 @@ static void *coalesce(void *bp)
 	size_t NEXT_ALLOC = GET_ALLOC(HDRP(NEXT_BLK(bp)));
 	size_t PREV_ALLOC = GET_ALLOC(FTRP(PREV_BLK(bp))); 
 	size_t size = GET_SIZE(HDRP(bp));
-
 	
+	/*commet by ggam-nyang*/
+	/*size += ... line 이후에 바로 remove를 하고 있는데
+	코드의 흐름 상, remove 라인을 먼저 시행한 후 size 이후의 코드가 연달아 나오는 것이 좋을 것 같아요!*/
+
 	if (PREV_ALLOC && !NEXT_ALLOC)
 	{
-		size += GET_SIZE(HDRP(NEXT_BLK(bp)));
 		remove_from_free_list(NEXT_BLK(bp));
+		size += GET_SIZE(HDRP(NEXT_BLK(bp)));
 		PUT(HDRP(bp), PACK(size, 0));
 		PUT(FTRP(bp), PACK(size, 0));
 	}
 	
 	else if (!PREV_ALLOC && NEXT_ALLOC)
 	{
-		size += GET_SIZE(HDRP(PREV_BLK(bp)));
 		remove_from_free_list(PREV_BLK(bp));
+		size += GET_SIZE(HDRP(PREV_BLK(bp)));
 		bp = PREV_BLK(bp); 
 		PUT(HDRP(bp), PACK(size, 0));
 		PUT(FTRP(bp), PACK(size, 0));
@@ -114,9 +118,9 @@ static void *coalesce(void *bp)
 	
 	else if (!PREV_ALLOC && !NEXT_ALLOC)
 	{
-		size += GET_SIZE(HDRP(PREV_BLK(bp))) + GET_SIZE(HDRP(NEXT_BLK(bp)));
 		remove_from_free_list(PREV_BLK(bp));
 		remove_from_free_list(NEXT_BLK(bp));
+		size += GET_SIZE(HDRP(PREV_BLK(bp))) + GET_SIZE(HDRP(NEXT_BLK(bp)));
 		bp = PREV_BLK(bp); 
 		PUT(HDRP(bp), PACK(size, 0));
 		PUT(FTRP(bp), PACK(size, 0));
@@ -133,7 +137,10 @@ void *mm_malloc(size_t size)
 
 	if (size == 0)
 		return (NULL);
-
+	
+	/*commet by ggam-nyang*/
+	/* 16보다는 정의한 매크로를 사용해서 4 * WSIZE or 2 * DSIZE 라고 하는 것이
+	가독성에 좋을 것 같아요. */
 	if (size <= DSIZE)
 		asize = 2 * DSIZE;
 	else
@@ -169,12 +176,14 @@ static void *find_fit(size_t asize)
 static void place(void *bp, size_t asize)
 {
 	size_t csize = GET_SIZE(HDRP(bp));
-
+	/*commet by ggam-nyang*/
+	/* if, else 안에서 remove_from_free_list가 반복되므로, if문 앞으로 빼면 line을 축소 할 수 있을 것 같아요!!
+	그러나 두 번 적어주는 것이 가독성이 좋은 것 같습니다*/
+	remove_from_free_list(bp);
 	if ((csize - asize) >= 4 * WSIZE)
 	{
 		PUT(HDRP(bp), PACK(asize, 1));
 		PUT(FTRP(bp), PACK(asize, 1));
-		remove_from_free_list(bp);
 		bp = NEXT_BLK(bp);
 		PUT(HDRP(bp), PACK(csize - asize, 0));
 		PUT(FTRP(bp), PACK(csize - asize, 0));
@@ -184,8 +193,8 @@ static void place(void *bp, size_t asize)
 	{
 		PUT(HDRP(bp), PACK(csize, 1));
 		PUT(FTRP(bp), PACK(csize, 1));
-		remove_from_free_list(bp);
 	}
+
 }
 
 static void insert_in_free_list(void *bp)
